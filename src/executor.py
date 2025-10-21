@@ -4,8 +4,9 @@ Handles safe execution of whitelisted Blender operators
 """
 
 import json
+import math
 import bpy
-from mathutils import Vector
+from mathutils import Vector, Euler
 
 
 def _call_op(tool_name, args):
@@ -79,8 +80,38 @@ def _call_op(tool_name, args):
         for k, v in args.items():
             if k in allowed:
                 # Type conversion for common Blender types
-                if k in {"location", "rotation", "value"} and isinstance(v, list):
-                    safe_kwargs[k] = Vector(v) if len(v) == 3 else v
+                if k == "location" and isinstance(v, list) and len(v) == 3:
+                    safe_kwargs[k] = Vector(v)
+                elif k == "rotation" and isinstance(v, list) and len(v) == 3:
+                    safe_kwargs[k] = Euler(v)
+                elif k == "value" and isinstance(v, list) and len(v) == 3:
+                    if tool_name in {"transform.translate", "transform.resize"}:
+                        safe_kwargs[k] = Vector(v)
+                    elif tool_name == "transform.rotate":
+                        # For rotate, convert [x,y,z] rotation to single axis rotation
+                        # Find the non-zero component and use it as value
+                        print(f"DEBUG: Processing rotate with value {v}")
+                        for i, angle in enumerate(v):
+                            if angle != 0.0:
+                                # Convert degrees to radians if angle > 2*pi (likely degrees)
+                                if abs(angle) > 6.28:  # > 2*pi, probably degrees
+                                    angle = math.radians(angle)
+                                safe_kwargs[k] = float(angle)
+                                if i == 0:
+                                    safe_kwargs["orient_axis"] = "X"
+                                elif i == 1:
+                                    safe_kwargs["orient_axis"] = "Y"
+                                elif i == 2:
+                                    safe_kwargs["orient_axis"] = "Z"
+                                print(
+                                    f"DEBUG: Set rotation angle {safe_kwargs[k]} on axis {safe_kwargs.get('orient_axis')}"
+                                )
+                                break
+                        else:
+                            safe_kwargs[k] = 0.0  # No rotation
+                            print(f"DEBUG: No rotation, set value to 0.0")
+                    else:
+                        safe_kwargs[k] = Vector(v)  # default for other values
                 else:
                     safe_kwargs[k] = v
             # Special handling for resize: if x/y/z provided, convert to value
@@ -141,6 +172,15 @@ def execute_plan_json(plan_text):
             continue
         print(f"Blender Copilot: Executing step {i}: {tool} with args {args}")
         try:
+            # Auto-select the last created object for transform ops if none active
+            if tool.startswith("transform.") and not bpy.context.active_object:
+                if bpy.data.objects:
+                    last_obj = bpy.data.objects[-1]  # Select the most recent object
+                    bpy.context.view_layer.objects.active = last_obj
+                    last_obj.select_set(True)
+                    print(
+                        f"Blender Copilot: Auto-selected object '{last_obj.name}' for transform"
+                    )
             _call_op(tool, args)
             logs.append(f"[{i}] {tool} ✓")
         except Exception as e:

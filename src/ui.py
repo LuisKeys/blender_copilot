@@ -25,7 +25,7 @@ class PLAN_PT_Panel(bpy.types.Panel):
         # Use a larger text area for better usability
         col.prop(context.scene, "plan_prompt", text="")
 
-        col.operator("plan.run", text="🚀 Run AI Command")
+        col.operator("plan.run", text="🚀")
         col.separator()
         col.label(text="Quick Examples:")
 

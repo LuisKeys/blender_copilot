@@ -14,10 +14,12 @@ bl_info = {
 }
 
 from .src.ui import register_ui, unregister_ui
+from .src.debug import setup_debug
 
 
 def register():
     """Register the add-on"""
+    setup_debug()
     # Register UI components
     register_ui()
 
